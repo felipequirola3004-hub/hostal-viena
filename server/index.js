@@ -4,6 +4,7 @@ import { config } from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import payphoneRoutes from './routes/payphone.js';
+import adminRoutes    from './routes/admin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -62,6 +63,7 @@ app.get('/health', (_req, res) =>
 );
 
 app.use('/api/payphone', payphoneRoutes);
+app.use('/api/admin',   adminRoutes);
 
 // ─── 5. Archivos estáticos del frontend (solo producción) ─────────────────────
 

@@ -302,6 +302,10 @@ export default function Admin() {
   const [linkResult,    setLinkResult]    = useState<GenerateLinkResult | null>(null);
   const [linkError,     setLinkError]     = useState("");
 
+  // ─── Estado: Reenvío de emails pendientes ────────────────────────────────────
+  const [sendingEmails, setSendingEmails] = useState(false);
+  const [emailsResult,  setEmailsResult]  = useState<{ sent: number; failed: number; message?: string } | null>(null);
+
   async function handleGenerateLink(e: React.FormEvent) {
     e.preventDefault();
     setLinkError("");
@@ -330,6 +334,20 @@ export default function Admin() {
 
   function copyToClipboard(text: string, label: string) {
     navigator.clipboard.writeText(text).then(() => alert(`${label} copiado al portapapeles.`));
+  }
+
+  async function handleSendPendingEmails() {
+    setSendingEmails(true);
+    setEmailsResult(null);
+    try {
+      const res = await fetch("/api/admin/send-pending-emails");
+      const data = await res.json();
+      setEmailsResult(data);
+    } catch (err) {
+      setEmailsResult({ sent: 0, failed: 0, message: err instanceof Error ? err.message : "Error de red" });
+    } finally {
+      setSendingEmails(false);
+    }
   }
 
   if (!isAuth) return <Login onLogin={() => setIsAuth(true)} />;
@@ -565,6 +583,34 @@ export default function Admin() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── SECCIÓN: EMAILS PENDIENTES ───────────────────────────────────────── */}
+      <div className="max-w-6xl mx-auto mt-10 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-gray-800">Emails Pendientes</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Si el SMTP está bloqueado (Render free), los emails se guardan en Supabase.<br />
+              Usa este botón para reenviarlos via Resend cuando quieras.
+            </p>
+          </div>
+          <button
+            onClick={handleSendPendingEmails}
+            disabled={sendingEmails}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {sendingEmails ? <Loader2 size={16} className="animate-spin" /> : null}
+            {sendingEmails ? "Enviando..." : "Reenviar emails pendientes"}
+          </button>
+        </div>
+        {emailsResult && (
+          <div className={`px-6 py-4 text-sm ${emailsResult.failed > 0 ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
+            {emailsResult.message
+              ? emailsResult.message
+              : `✅ Enviados: ${emailsResult.sent} · ❌ Fallidos: ${emailsResult.failed}`}
           </div>
         )}
       </div>
