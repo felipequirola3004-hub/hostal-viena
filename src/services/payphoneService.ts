@@ -17,6 +17,7 @@ export interface PreparePaymentParams {
   roomId?: string;
   guestName?: string;
   guestEmail?: string;
+  numHuespedes?: number;
   reference?: string;
 }
 
@@ -96,12 +97,13 @@ export async function preparePayment(
 export async function confirmPayment(
   id: string,
   clientTxId: string,
-  guestName?: string
+  guestName?: string,
+  booking?: Record<string, unknown>
 ): Promise<ConfirmPaymentResult> {
   const res = await fetch(`${API_BASE}/confirm`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, clientTxId, guestName }),
+    body: JSON.stringify({ id, clientTxId, guestName, booking }),
   });
 
   const data = await res.json();

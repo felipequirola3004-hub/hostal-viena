@@ -202,7 +202,7 @@ router.post('/confirm', async (req, res) => {
       return res.status(500).json({ error: 'PAYPHONE_TOKEN no configurado en server/.env' });
     }
 
-    const { id, clientTxId } = req.body;
+    const { id, clientTxId, guestName, booking } = req.body;
     if (!id || !clientTxId) {
       return res.status(400).json({ error: 'Se requieren los parámetros "id" y "clientTxId".' });
     }
@@ -222,8 +222,9 @@ router.post('/confirm', async (req, res) => {
     if (data.statusCode === 3) {
       sendBookingEmails({
         payphone:            data,
-        guestName:           req.body.guestName,
+        guestName,
         clientTransactionId: clientTxId,
+        booking,             // datos de la reserva desde sessionStorage del frontend
       }).catch((err) => console.error('[Email] Error inesperado:', err.message));
     }
 

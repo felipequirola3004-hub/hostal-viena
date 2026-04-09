@@ -1,18 +1,14 @@
 /**
  * PaymentForm.tsx
- * Dialog de reserva y pago mediante Payphone.
- * El precio por noche lo define el admin — el huésped solo lo ve, no lo edita.
+ * Modal de reserva y pago mediante Payphone.
+ * - Bottom sheet en móvil, modal centrado en desktop
+ * - Header sticky con botón cerrar de 44px mínimo
+ * - Selector de huéspedes con límite de capacidad
  */
 
 import { useState } from "react";
-import { CreditCard, Loader2, Lock, ShieldCheck } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { CreditCard, Loader2, Lock, ShieldCheck, X, Minus, Plus } from "lucide-react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { preparePayment } from "@/services/payphoneService";
 import { createPendingTransaction } from "@/services/supabasePaymentService";
@@ -65,57 +61,70 @@ function addDays(dateStr: string, days: number): string {
 
 export default function PaymentForm({ open, onClose, room }: PaymentFormProps) {
   const { lang } = useLanguage();
+  const es = lang === "es";
 
   const pricePerNight = getRoomPrice(room);
   const roomName      = getRoomName(room, lang);
+  const maxGuests     = room.capacity ?? 4;
 
-  const [checkIn,   setCheckIn]   = useState(todayStr());
-  const [nights,    setNights]    = useState(1);
-  const [guestName, setGuestName] = useState("");
-  const [email,     setEmail]     = useState("");
-  const [loading,   setLoading]   = useState(false);
+  const [checkIn,       setCheckIn]       = useState(todayStr());
+  const [nights,        setNights]        = useState(1);
+  const [numHuespedes,  setNumHuespedes]  = useState(1);
+  const [guestName,     setGuestName]     = useState("");
+  const [email,         setEmail]         = useState("");
+  const [loading,       setLoading]       = useState(false);
 
-  const checkOut    = addDays(checkIn, nights);
-  const totalUSD    = nights * pricePerNight;
-  const totalCents  = Math.round(totalUSD * 100);
+  const checkOut   = addDays(checkIn, nights);
+  const totalUSD   = nights * pricePerNight;
+  const totalCents = Math.round(totalUSD * 100);
 
-  // ─── Handlers ──────────────────────────────────────────────────────────────
+  function changeGuests(delta: number) {
+    setNumHuespedes((prev) => {
+      const next = prev + delta;
+      if (next < 1) return 1;
+      if (next > maxGuests) return maxGuests;
+      return next;
+    });
+  }
+
+  // ─── Handlers de pago ──────────────────────────────────────────────────────
 
   async function handlePay(method: "card" | "payphone") {
     if (totalCents <= 0) {
-      toast.error(lang === "es" ? "El monto debe ser mayor a $0." : "Amount must be greater than $0.");
+      toast.error(es ? "El monto debe ser mayor a $0." : "Amount must be greater than $0.");
       return;
     }
 
     setLoading(true);
     try {
-      const reference =
-        lang === "es"
-          ? `Reserva ${roomName} - ${nights} noche(s)${guestName ? ` - ${guestName}` : ""}`
-          : `Booking ${roomName} - ${nights} night(s)${guestName ? ` - ${guestName}` : ""}`;
+      const reference = es
+        ? `Reserva ${roomName} - ${nights} noche(s) - ${numHuespedes} huésped(es)`
+        : `Booking ${roomName} - ${nights} night(s) - ${numHuespedes} guest(s)`;
 
-      // 1. Preparar transacción en Payphone (a través del backend)
+      // 1. Preparar transacción en Payphone
       const result = await preparePayment({
-        amount:     totalCents,
-        roomId:     room.id,
+        amount:        totalCents,
+        roomId:        room.id,
         roomName,
-        guestName:  guestName || undefined,
-        guestEmail: email     || undefined,
+        guestName:     guestName || undefined,
+        guestEmail:    email     || undefined,
+        numHuespedes,
         reference,
       });
 
-      // 2. Guardar datos de la reserva en sessionStorage para recuperar en PaymentResponse
-      sessionStorage.setItem(`booking_${result.clientTransactionId}`, JSON.stringify({
-        habitacion_id:    room.id,
+      // 2. Guardar datos en sessionStorage (se recuperan en PaymentResponse)
+      const bookingData = {
+        habitacion_id:     room.id,
         habitacion_nombre: roomName,
-        guest_name:       guestName || undefined,
-        guest_email:      email     || undefined,
-        check_in:         checkIn,
-        check_out:        checkOut,
-        num_noches:       nights,
-        num_huespedes:    1,
-        amount_usd:       totalUSD,
-      }));
+        guest_name:        guestName || undefined,
+        guest_email:       email     || undefined,
+        check_in:          checkIn,
+        check_out:         checkOut,
+        num_noches:        nights,
+        num_huespedes:     numHuespedes,
+        amount_usd:        totalUSD,
+      };
+      sessionStorage.setItem(`booking_${result.clientTransactionId}`, JSON.stringify(bookingData));
 
       // 3. Registrar transacción pendiente en Supabase
       await createPendingTransaction({
@@ -129,7 +138,7 @@ export default function PaymentForm({ open, onClose, room }: PaymentFormProps) {
         status:                "pending",
       });
 
-      // 4. Redirigir a Payphone (nunca en iframe)
+      // 4. Redirigir a Payphone
       window.location.href = method === "card" ? result.payWithCard : result.payWithPayPhone;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al procesar el pago.");
@@ -137,26 +146,45 @@ export default function PaymentForm({ open, onClose, room }: PaymentFormProps) {
     }
   }
 
-  // ─── Textos ────────────────────────────────────────────────────────────────
-
-  const es = lang === "es";
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md bg-background border-border">
-        <DialogHeader>
-          <DialogTitle className="font-serif text-xl text-foreground flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-gold" />
-            {es ? "Reservar y pagar" : "Book & Pay"}
-          </DialogTitle>
-          <DialogDescription className="text-muted-foreground text-sm">
-            {roomName}
-          </DialogDescription>
-        </DialogHeader>
+      {/*
+        Bottom-sheet en móvil (bottom-0, inset-x-0, rounded-t-2xl)
+        Modal centrado en sm+ (left-[50%], top-[50%], translate)
+        overflow-hidden en el contenedor + overflow-y-auto en el body
+        → el botón X del shadcn (absolute right-4 top-4) queda SIEMPRE visible
+      */}
+      <DialogContent className="
+        flex flex-col gap-0 p-0 overflow-hidden
+        max-h-[90dvh] w-full
+        fixed inset-x-0 bottom-0 top-auto translate-x-0 translate-y-0 rounded-t-2xl
+        sm:bottom-auto sm:inset-x-auto sm:left-[50%] sm:top-[50%]
+        sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-md sm:rounded-lg
+        bg-background border-border
+      ">
+        {/* ── HEADER STICKY ──────────────────────────────────────────────── */}
+        <div className="sticky top-0 z-10 bg-background border-b border-border/30 px-5 pt-5 pb-4 flex items-start justify-between shrink-0">
+          <div className="pr-2">
+            <h2 className="font-serif text-lg sm:text-xl text-foreground flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-gold shrink-0" />
+              {es ? "Reservar y pagar" : "Book & Pay"}
+            </h2>
+            <p className="text-muted-foreground text-sm mt-0.5 line-clamp-1">{roomName}</p>
+          </div>
+          {/* Botón cerrar con área de toque de 44px */}
+          <button
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-sm hover:bg-secondary/60 transition-colors shrink-0 -mr-1 -mt-1"
+          >
+            <X className="w-5 h-5 text-muted-foreground" />
+          </button>
+        </div>
 
-        <div className="divider-gold !mx-0 mb-4 w-12" />
-
-        <div className="space-y-4">
+        {/* ── CONTENIDO DESPLAZABLE ──────────────────────────────────────── */}
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
 
           {/* Precio por noche — solo lectura */}
           <div className="flex items-center justify-between px-4 py-3 bg-secondary/60 rounded-sm border border-border/40">
@@ -166,6 +194,49 @@ export default function PaymentForm({ open, onClose, room }: PaymentFormProps) {
             <span className="text-base font-bold text-gold">
               ${pricePerNight.toFixed(2)} USD
             </span>
+          </div>
+
+          {/* Selector de huéspedes */}
+          <div>
+            <label className="text-xs tracking-widest uppercase text-muted-foreground mb-2 block">
+              {es ? "Huéspedes" : "Guests"}
+            </label>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => changeGuests(-1)}
+                disabled={numHuespedes <= 1 || loading}
+                aria-label="Reducir huéspedes"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center border border-border rounded-sm hover:bg-secondary/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Minus className="w-4 h-4" />
+              </button>
+
+              <span className="text-lg font-bold text-foreground w-8 text-center tabular-nums">
+                {numHuespedes}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => changeGuests(1)}
+                disabled={numHuespedes >= maxGuests || loading}
+                aria-label="Aumentar huéspedes"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center border border-border rounded-sm hover:bg-secondary/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+
+              <span className="text-xs text-muted-foreground/70">
+                {es ? `Máx. ${maxGuests} persona${maxGuests !== 1 ? "s" : ""}` : `Max. ${maxGuests} guest${maxGuests !== 1 ? "s" : ""}`}
+              </span>
+            </div>
+            {numHuespedes >= maxGuests && (
+              <p className="text-[11px] text-amber-600 mt-1">
+                {es
+                  ? `Esta habitación tiene capacidad máxima de ${maxGuests} persona${maxGuests !== 1 ? "s" : ""}`
+                  : `This room has a maximum capacity of ${maxGuests} guest${maxGuests !== 1 ? "s" : ""}`}
+              </p>
+            )}
           </div>
 
           {/* Fecha de entrada */}
@@ -179,7 +250,7 @@ export default function PaymentForm({ open, onClose, room }: PaymentFormProps) {
               value={checkIn}
               onChange={(e) => setCheckIn(e.target.value)}
               disabled={loading}
-              className="w-full px-3 py-2 text-sm border border-border rounded-sm bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-gold"
+              className="w-full min-h-[44px] px-3 py-2 text-sm border border-border rounded-sm bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-gold"
             />
           </div>
 
@@ -195,7 +266,7 @@ export default function PaymentForm({ open, onClose, room }: PaymentFormProps) {
               value={nights}
               onChange={(e) => setNights(Math.max(1, Number(e.target.value)))}
               disabled={loading}
-              className="w-full px-3 py-2 text-sm border border-border rounded-sm bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-gold"
+              className="w-full min-h-[44px] px-3 py-2 text-sm border border-border rounded-sm bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-gold"
             />
             <p className="text-[11px] text-muted-foreground/60 mt-1">
               {es ? `Salida: ${checkOut}` : `Check-out: ${checkOut}`}
@@ -213,7 +284,7 @@ export default function PaymentForm({ open, onClose, room }: PaymentFormProps) {
               onChange={(e) => setGuestName(e.target.value)}
               placeholder={es ? "Tu nombre completo" : "Your full name"}
               disabled={loading}
-              className="w-full px-3 py-2 text-sm border border-border rounded-sm bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-gold"
+              className="w-full min-h-[44px] px-3 py-2 text-sm border border-border rounded-sm bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-gold"
             />
           </div>
 
@@ -228,7 +299,7 @@ export default function PaymentForm({ open, onClose, room }: PaymentFormProps) {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="tu@correo.com"
               disabled={loading}
-              className="w-full px-3 py-2 text-sm border border-border rounded-sm bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-gold"
+              className="w-full min-h-[44px] px-3 py-2 text-sm border border-border rounded-sm bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-gold"
             />
             <p className="text-[11px] text-muted-foreground/60 mt-1">
               {es ? "Recibirás la confirmación de tu reserva" : "You'll receive booking confirmation"}
@@ -255,7 +326,7 @@ export default function PaymentForm({ open, onClose, room }: PaymentFormProps) {
             <button
               onClick={() => handlePay("card")}
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gold text-primary text-xs font-bold tracking-[0.1em] uppercase rounded-sm hover:bg-[#b5952f] transition-colors disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
+              className="w-full flex items-center justify-center gap-2 px-6 py-3 min-h-[48px] bg-gold text-primary text-xs font-bold tracking-[0.1em] uppercase rounded-sm hover:bg-[#b5952f] transition-colors disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
               {loading ? (es ? "Procesando..." : "Processing...") : (es ? "Pagar con tarjeta" : "Pay with card")}
@@ -264,7 +335,7 @@ export default function PaymentForm({ open, onClose, room }: PaymentFormProps) {
             <button
               onClick={() => handlePay("payphone")}
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-secondary text-secondary-foreground text-xs font-bold tracking-[0.1em] uppercase rounded-sm hover:bg-secondary/80 transition-colors disabled:opacity-60 disabled:cursor-not-allowed border border-border/40"
+              className="w-full flex items-center justify-center gap-2 px-6 py-3 min-h-[48px] bg-secondary text-secondary-foreground text-xs font-bold tracking-[0.1em] uppercase rounded-sm hover:bg-secondary/80 transition-colors disabled:opacity-60 disabled:cursor-not-allowed border border-border/40"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span className="text-base">📱</span>}
               {loading ? (es ? "Procesando..." : "Processing...") : (es ? "Pagar con app Payphone" : "Pay with Payphone app")}
@@ -272,7 +343,7 @@ export default function PaymentForm({ open, onClose, room }: PaymentFormProps) {
           </div>
 
           {/* Nota de seguridad */}
-          <div className="flex items-start gap-2 p-3 rounded-sm bg-secondary/50 text-[11px] text-muted-foreground leading-relaxed">
+          <div className="flex items-start gap-2 p-3 rounded-sm bg-secondary/50 text-[11px] text-muted-foreground leading-relaxed mb-2">
             <ShieldCheck className="w-4 h-4 shrink-0 text-gold mt-0.5" />
             <div>
               <div className="flex items-center gap-1 font-semibold mb-0.5">
@@ -285,7 +356,7 @@ export default function PaymentForm({ open, onClose, room }: PaymentFormProps) {
             </div>
           </div>
 
-        </div>
+        </div>{/* fin scroll */}
       </DialogContent>
     </Dialog>
   );

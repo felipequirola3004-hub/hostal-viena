@@ -72,7 +72,8 @@ export default function PaymentResponse() {
         const booking: BookingSession = bookingRaw ? JSON.parse(bookingRaw) : {};
 
         // ── CONFIRMAR PAGO ──────────────────────────────────────────────────
-        const data = await confirmPayment(id, clientTxId, booking.guest_name);
+        // Pasamos booking al backend para incluirlo en los emails de confirmación
+        const data = await confirmPayment(id, clientTxId, booking.guest_name, booking as Record<string, unknown>);
         setResult(data);
 
         if (data.statusCode === 3) {

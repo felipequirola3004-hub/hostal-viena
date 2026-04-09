@@ -371,12 +371,15 @@ export default function Admin() {
                   <h3 className="font-bold text-lg text-gray-800">{room.name.es}</h3>
                   <p className="text-sm text-gray-500 line-clamp-1">{room.description.es}</p>
                 </div>
-                <div className="text-center shrink-0">
+                <div className="text-center shrink-0 space-y-0.5">
                   {room.price ? (
-                    <span className="text-lg font-bold text-green-700">${room.price}<span className="text-xs font-normal text-gray-400">/noche</span></span>
+                    <div className="text-lg font-bold text-green-700">${room.price}<span className="text-xs font-normal text-gray-400">/noche</span></div>
                   ) : (
-                    <span className="text-xs text-gray-400 italic">Sin precio</span>
+                    <div className="text-xs text-gray-400 italic">Sin precio</div>
                   )}
+                  <div className="text-xs text-gray-400">
+                    {room.capacity ? `${room.capacity} persona${room.capacity !== 1 ? "s" : ""}` : "— personas"}
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => handleEdit(room)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-full">
