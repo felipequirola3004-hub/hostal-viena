@@ -5,6 +5,9 @@
 .env.production
 server/.env
 
+# Información sensible — NUNCA subir a Git
+SERVICIOS.md
+
 # Logs
 logs
 *.log
