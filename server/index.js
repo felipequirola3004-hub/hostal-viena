@@ -18,8 +18,10 @@ const isProd = process.env.NODE_ENV === 'production';
 const allowedOrigins = [
   'https://vienainternacionaluio.com',
   'https://www.vienainternacionaluio.com',
+  'https://hostal-viena.onrender.com',
   'http://localhost:8080',
   'http://localhost:5173',
+  'http://localhost:3001',
 ];
 
 if (process.env.FRONTEND_URL && !allowedOrigins.includes(process.env.FRONTEND_URL)) {
